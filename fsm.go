@@ -42,19 +42,19 @@ type Store interface {
 // for managing the state of that individual
 type Traverser interface {
 	// UUID
-	UUID() string
-	SetUUID(string)
+	UUID() (string, error)
+	SetUUID(string) error
 
 	// Platform
-	Platform() string
-	SetPlatform(string)
+	Platform() (string, error)
+	SetPlatform(string) error
 
 	// State
-	CurrentState() string
-	SetCurrentState(string)
+	CurrentState() (string, error)
+	SetCurrentState(string) error
 
 	// Data
-	Upsert(key string, value interface{})
-	Fetch(key string) interface{}
-	Delete(key string)
+	Upsert(key string, value interface{}) error
+	Fetch(key string) (interface{}, error)
+	Delete(key string) error
 }

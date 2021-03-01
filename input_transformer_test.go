@@ -1,31 +1,29 @@
-package fsm_test
+package fsm
 
 import (
 	"testing"
-
-	"github.com/fsm/fsm"
 )
 
 var (
-	validIntents = []*fsm.Intent{
+	validIntents = []*Intent{
 		SampleIntent,
 	}
 )
 
 func TestCleanInput(t *testing.T) {
-	if fsm.CleanInput("Hello!") != "hello" {
+	if CleanInput("Hello!") != "hello" {
 		t.Fail()
 	}
-	if fsm.CleanInput("Hello  World") != "hello world" {
+	if CleanInput("Hello  World") != "hello world" {
 		t.Fail()
 	}
-	if fsm.CleanInput("Hello, World") != "hello world" {
+	if CleanInput("Hello, World") != "hello world" {
 		t.Fail()
 	}
 }
 
 func TestValidTextInputTransformer(t *testing.T) {
-	intent, params := fsm.TextInputTransformer("I am a 29 year old male.", validIntents)
+	intent, params := TextInputTransformer("I am a 29 year old male.", validIntents)
 	if intent != SampleIntent {
 		t.Fail()
 	}
@@ -38,7 +36,7 @@ func TestValidTextInputTransformer(t *testing.T) {
 }
 
 func TestInvalidTextInputTransformer(t *testing.T) {
-	intent, params := fsm.TextInputTransformer("hello world", validIntents)
+	intent, params := TextInputTransformer("hello world", validIntents)
 	if intent != nil {
 		t.Fail()
 	}

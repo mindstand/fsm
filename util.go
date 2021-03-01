@@ -1,5 +1,7 @@
 package fsm
 
+import "fmt"
+
 // GetStateMap converts a StateMachine into a StateMap
 func GetStateMap(stateMachine StateMachine) StateMap {
 	stateMap := make(StateMap, 0)
@@ -14,21 +16,34 @@ func GetStateMap(stateMachine StateMachine) StateMap {
 // This function handles the nuance of the logic for a single step through a state machine.
 // ALL fsm-target's should call Step directly, and not attempt to handle the process of stepping through
 // the StateMachine, so all platforms function with the same logic.
-func Step(platform, uuid string, input interface{}, InputTransformer InputTransformer, store Store, emitter Emitter, stateMap StateMap) {
+func Step(platform, uuid string, input interface{}, InputTransformer InputTransformer, store Store, emitter Emitter, stateMap StateMap) error {
 	// Get Traverser
 	newTraverser := false
 	traverser, err := store.FetchTraverser(uuid)
 	if err != nil {
 		traverser, _ = store.CreateTraverser(uuid)
-		traverser.SetCurrentState(StartState)
-		traverser.SetPlatform(platform)
+		err = traverser.SetCurrentState(StartState)
+		if err != nil {
+			return fmt.Errorf("failed to set current state to start state %w", err)
+		}
+		err = traverser.SetPlatform(platform)
+		if err != nil {
+			return fmt.Errorf("failed to set platform %w", err)
+		}
 		newTraverser = true
 	}
 
 	// Get current state
-	currentState := stateMap[traverser.CurrentState()](emitter, traverser)
+	traverserCurState, err := traverser.CurrentState()
+	if err != nil {
+		return fmt.Errorf("failed to get current state from traverser %w", err)
+	}
+	currentState := stateMap[traverserCurState](emitter, traverser)
 	if newTraverser {
-		performEntryAction(currentState, emitter, traverser, stateMap)
+		err = performEntryAction(currentState, emitter, traverser, stateMap)
+		if err != nil {
+			return fmt.Errorf("failed to perform action entry, %w", err)
+		}
 	}
 
 	// Transition
@@ -36,14 +51,28 @@ func Step(platform, uuid string, input interface{}, InputTransformer InputTransf
 	if intent != nil {
 		newState := currentState.Transition(intent, params)
 		if newState != nil {
-			traverser.SetCurrentState(newState.Slug)
-			performEntryAction(newState, emitter, traverser, stateMap)
+			err = traverser.SetCurrentState(newState.Slug)
+			if err != nil {
+				return fmt.Errorf("failed to set current state during transition, %w", err)
+			}
+			err = performEntryAction(newState, emitter, traverser, stateMap)
+			if err != nil {
+				return fmt.Errorf("failed to perform action entry during transition, %w", err)
+			}
 		} else {
-			currentState.Entry(true)
+			err = currentState.Entry(true)
+			if err != nil {
+				return fmt.Errorf("failed to enter current state, %w", err)
+			}
 		}
 	} else {
-		currentState.Entry(true)
+		err = currentState.Entry(true)
+		if err != nil {
+			return fmt.Errorf("failed to enter current state, %w", err)
+		}
 	}
+
+	return nil
 }
 
 // performEntryAction handles the logic of switching states and calling the Entry function.
@@ -59,10 +88,17 @@ func performEntryAction(state *State, emitter Emitter, traverser Traverser, stat
 
 	// If we switch states in Entry action, we want to perform
 	// the next states Entry action.
-	currentState := traverser.CurrentState()
+	currentState, err := traverser.CurrentState()
+	if err != nil {
+		return fmt.Errorf("failed to get the traversers current state, %w", err)
+	}
+
 	if currentState != state.Slug {
 		shiftedState := stateMap[currentState](emitter, traverser)
-		performEntryAction(shiftedState, emitter, traverser, stateMap)
+		err = performEntryAction(shiftedState, emitter, traverser, stateMap)
+		if err != nil {
+			return fmt.Errorf("failed to perform recursive entry action, %w", err)
+		}
 	}
 	return nil
 }

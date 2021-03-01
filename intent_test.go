@@ -1,14 +1,12 @@
-package fsm_test
+package fsm
 
 import (
 	"strconv"
 	"testing"
-
-	"github.com/fsm/fsm"
 )
 
 var (
-	TypeGender = &fsm.Type{
+	TypeGender = &Type{
 		Slug: "gender",
 		Options: []string{
 			"male",
@@ -17,7 +15,7 @@ var (
 		},
 	}
 
-	TypeInteger = &fsm.Type{
+	TypeInteger = &Type{
 		Slug: "integer",
 		IsValid: func(input string) bool {
 			_, err := strconv.ParseInt(input, 10, 64)
@@ -25,9 +23,9 @@ var (
 		},
 	}
 
-	SampleIntent = &fsm.Intent{
+	SampleIntent = &Intent{
 		Slug: "sample-intent",
-		Slots: map[string]*fsm.Type{
+		Slots: map[string]*Type{
 			"gender": TypeGender,
 			"age":    TypeInteger,
 		},
@@ -119,9 +117,9 @@ func TestSlotNoMatch(t *testing.T) {
 	)
 }
 
-func testParse(t *testing.T, intent *fsm.Intent, input string, expectMatch bool, expectParams map[string]string) {
+func testParse(t *testing.T, intent *Intent, input string, expectMatch bool, expectParams map[string]string) {
 	// Parse the input
-	matches, params := intent.Parse(fsm.CleanInput(input))
+	matches, params := intent.Parse(CleanInput(input))
 
 	// Validate Match
 	if matches != expectMatch {
