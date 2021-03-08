@@ -53,6 +53,12 @@ type Traverser interface {
 	CurrentState() (string, error)
 	SetCurrentState(string) error
 
+	// Queue
+	// dequeue should internally perform queue behavior, if it doesnt it will infinitely try to execute this state
+	DequeueQueuedState() (state string, stateInfo interface{}, exists bool, err error)
+	// enqueue should internally perform queue behavior
+	EnqueueQueuedState(state string, stateInfo interface{}) error
+
 	// Data
 	Upsert(key string, value interface{}) error
 	Fetch(key string) (interface{}, error)

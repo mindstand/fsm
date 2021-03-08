@@ -2,6 +2,8 @@ package fsm
 
 import "fmt"
 
+const QueueInfoKey string = "queue_info"
+
 // GetStateMap converts a StateMachine into a StateMap
 func GetStateMap(stateMachine StateMachine) StateMap {
 	stateMap := make(StateMap, 0)
@@ -9,6 +11,32 @@ func GetStateMap(stateMachine StateMachine) StateMap {
 		stateMap[buildState(nil, nil).Slug] = buildState
 	}
 	return stateMap
+}
+
+func EnqueueStateToUser(platform, uuid, state string, input interface{}, store Store) error {
+	// Get Traverser
+	traverser, err := store.FetchTraverser(uuid)
+	if err != nil {
+		traverser, err = store.CreateTraverser(uuid)
+		if err != nil {
+			return fmt.Errorf("failed to create traverser for id (%s), %w", uuid, err)
+		}
+		err = traverser.SetCurrentState(StartState)
+		if err != nil {
+			return fmt.Errorf("failed to set current state to start state %w", err)
+		}
+		err = traverser.SetPlatform(platform)
+		if err != nil {
+			return fmt.Errorf("failed to set platform %w", err)
+		}
+	}
+
+	err = traverser.EnqueueQueuedState(state, input)
+	if err != nil {
+		return fmt.Errorf("failed to enqueue state to user, %w", err)
+	}
+
+	return nil
 }
 
 // Step performs a single step through a StateMachine.
@@ -21,7 +49,10 @@ func Step(platform, uuid string, input interface{}, InputTransformer InputTransf
 	newTraverser := false
 	traverser, err := store.FetchTraverser(uuid)
 	if err != nil {
-		traverser, _ = store.CreateTraverser(uuid)
+		traverser, err = store.CreateTraverser(uuid)
+		if err != nil {
+			return fmt.Errorf("failed to create traverser for id (%s), %w", uuid, err)
+		}
 		err = traverser.SetCurrentState(StartState)
 		if err != nil {
 			return fmt.Errorf("failed to set current state to start state %w", err)
@@ -31,6 +62,29 @@ func Step(platform, uuid string, input interface{}, InputTransformer InputTransf
 			return fmt.Errorf("failed to set platform %w", err)
 		}
 		newTraverser = true
+	}
+
+	// check if traverser has any queued states
+	// if there are it will override whatever state was attempted and eventually should lead back to let the user decide
+	// this is for matters that the bot initiates generally coming from "triggers"
+	if !newTraverser {
+		state, info, ok, err := traverser.DequeueQueuedState()
+		if err != nil {
+			return fmt.Errorf("failed to check queued states, %w", err)
+		}
+
+		// if anything was actually dequeued
+		if ok {
+			err = traverser.SetCurrentState(state)
+			if err != nil {
+				return fmt.Errorf("failed to set current state from queued state provided (state=%s), %w", state, err)
+			}
+
+			err = traverser.Upsert(QueueInfoKey, info)
+			if err != nil {
+				return fmt.Errorf("failed to upsert queue info, %w", err)
+			}
+		}
 	}
 
 	// Get current state
