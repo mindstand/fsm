@@ -61,7 +61,7 @@ type Traverser interface {
 	// Queue
 	// Note invoking queued states must be done manually
 	AddQueuedState(state string, info interface{}) error
-	DequeueQueuedState() error
+	DequeueQueuedState() (state string, info interface{}, err error)
 
 	// Data
 	Upsert(key string, value interface{}) error
