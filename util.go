@@ -44,6 +44,9 @@ func TriggerState(platform, uuid, targetState string, input interface{}, InputTr
 		if err != nil {
 			return fmt.Errorf("failed to enqueue state, %w", err)
 		}
+
+		// cant go any further
+		return nil
 	}
 
 	lastUpdate, err := traverser.GetLastUpdateTime()
@@ -60,6 +63,8 @@ func TriggerState(platform, uuid, targetState string, input interface{}, InputTr
 			if err != nil {
 				return fmt.Errorf("failed to enqueue state, %w", err)
 			}
+			// we cant go any further
+			return nil
 		}
 	}
 
