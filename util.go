@@ -33,13 +33,13 @@ func TriggerState(platform, uuid, targetState string, input interface{}, InputTr
 	if err != nil {
 		return fmt.Errorf("failed to get current state from traverser, %w", err)
 	}
-	canExit, ok := checkStateExitable(curState, stateMap)
+	isExitable, ok := checkStateExitable(curState, stateMap)
 	if !ok {
 		return fmt.Errorf("state (%s) does not exist", curState)
 	}
 
 	// if they cant exit their current state then queue it
-	if !canExit {
+	if !isExitable {
 		err = traverser.AddQueuedState(targetState, input)
 		if err != nil {
 			return fmt.Errorf("failed to enqueue state, %w", err)
@@ -57,7 +57,7 @@ func TriggerState(platform, uuid, targetState string, input interface{}, InputTr
 	// check if lastUpdate was even set
 	if !lastUpdate.IsZero() {
 		// check if its past the timeout
-		if !time.Now().UTC().After(lastUpdate.Add(InputTimeout)) {
+		if time.Now().UTC().After(lastUpdate.Add(InputTimeout)) {
 			// we have to queue it because another state is already in progress
 			err = traverser.AddQueuedState(targetState, input)
 			if err != nil {
