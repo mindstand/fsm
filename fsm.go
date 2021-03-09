@@ -21,7 +21,7 @@ type BuildState func(Emitter, Traverser) *State
 // State represents an individual state in a larger state machine
 type State struct {
 	Slug         string
-	IsExitable bool
+	IsExitable   bool
 	Entry        func(isReentry bool) error
 	ValidIntents func() []*Intent
 	Transition   func(*Intent, map[string]string) *State

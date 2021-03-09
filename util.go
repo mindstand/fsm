@@ -69,6 +69,17 @@ func TriggerState(platform, uuid, targetState string, input interface{}, InputTr
 		return fmt.Errorf("state (%s) does not exist", targetState)
 	}
 
+	// set the current state in the traverser
+	err = traverser.SetCurrentState(targetState)
+	if err != nil {
+		return fmt.Errorf("failed to set target state, %w", err)
+	}
+
+	err = traverser.SetLastUpdateTime(time.Now().UTC())
+	if err != nil {
+		return fmt.Errorf("failed to set last updated time, %w", err)
+	}
+
 	// set info key
 	err = traverser.Upsert(QueueInfoKey, input)
 	if err != nil {
@@ -174,7 +185,7 @@ func getTraverser(platform, uuid string, store Store) (Traverser, bool, error) {
 
 		err = traverser.SetLastUpdateTime(time.Now().UTC())
 		if err != nil {
-			return nil, false,  fmt.Errorf("failed to set last update time, %w", err)
+			return nil, false, fmt.Errorf("failed to set last update time, %w", err)
 		}
 
 		err = traverser.SetPlatform(platform)
