@@ -22,29 +22,27 @@ func GetStateMap(stateMachine StateMachine) StateMap {
 
 func TriggerState(platform, uuid, targetState string, input interface{}, InputTransformer InputTransformer, store Store, emitter Emitter, stateMap StateMap) error {
 	// Get Traverser
-	traverser, newTraverser, err := getTraverser(platform, uuid, store)
+	traverser, _, err := getTraverser(platform, uuid, store)
 	if err != nil {
 		return fmt.Errorf("traverser with id (%s) not found, %w", uuid, err)
 	}
 
 	// check that the current state is exitable
 	// past this block we can assume current state is exitable
-	if !newTraverser {
-		curState, err := traverser.CurrentState()
-		if err != nil {
-			return fmt.Errorf("failed to get current state from traverser, %w", err)
-		}
-		canExit, ok := checkStateExitable(curState, stateMap)
-		if !ok {
-			return fmt.Errorf("state (%s) does not exist", curState)
-		}
+	curState, err := traverser.CurrentState()
+	if err != nil {
+		return fmt.Errorf("failed to get current state from traverser, %w", err)
+	}
+	canExit, ok := checkStateExitable(curState, stateMap)
+	if !ok {
+		return fmt.Errorf("state (%s) does not exist", curState)
+	}
 
-		// if they cant exit their current state then queue it
-		if !canExit {
-			err = traverser.AddQueuedState(targetState, input)
-			if err != nil {
-				return fmt.Errorf("failed to enqueue state, %w", err)
-			}
+	// if they cant exit their current state then queue it
+	if !canExit {
+		err = traverser.AddQueuedState(targetState, input)
+		if err != nil {
+			return fmt.Errorf("failed to enqueue state, %w", err)
 		}
 	}
 
