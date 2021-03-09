@@ -1,0 +1,6 @@
+github.com/fsm/cache-store v1.0.0 h1:2U7wNELeYv6igLVa3GWYWm6Soa6gCi3RVLDbhIdI82Y=
+github.com/fsm/cache-store v2.0.0+incompatible h1:J3uRqoW7UInvR8zf5qPYBjRKdI88rZk98tD0Ka/MFtA=
+github.com/fsm/cache-store v2.0.0+incompatible/go.mod h1:PDIilvKz1XfmhDIR/AvxbKdyFVFZGTok8Hgt5c7IjTE=
+github.com/fsm/fsm v1.0.0 h1:KC+29bUuzoYKGm/XyoAtknSlFCUSKxuO64eFM9H9ms4=
+github.com/fsm/fsm v2.0.0+incompatible h1:hGN8R/Lvv+Rr2iEznArOH8uZfBU7rRMYQwbv+jpsQR4=
+github.com/fsm/fsm v2.0.0+incompatible/go.mod h1:bA+jthJ/QQ3nsvmN+XNK9VEZcCf5yu+zfqQF+ND2omc=

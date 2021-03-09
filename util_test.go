@@ -1,4 +1,4 @@
-package fsm_test
+package fsm
 
 import (
 	"errors"

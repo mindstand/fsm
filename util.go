@@ -1,8 +1,15 @@
 package fsm
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 const QueueInfoKey string = "queue_info"
+
+// timeout is only for when a state is triggered
+// Set intentionally to var so it can be overridden
+var InputTimeout = 15 * time.Minute
 
 // GetStateMap converts a StateMachine into a StateMap
 func GetStateMap(stateMachine StateMachine) StateMap {
@@ -13,30 +20,80 @@ func GetStateMap(stateMachine StateMachine) StateMap {
 	return stateMap
 }
 
-func EnqueueStateToUser(platform, uuid, state string, input interface{}, store Store) error {
+func TriggerState(platform, uuid, targetState string, input interface{}, InputTransformer InputTransformer, store Store, emitter Emitter, stateMap StateMap) error {
 	// Get Traverser
-	traverser, err := store.FetchTraverser(uuid)
+	traverser, newTraverser, err := getTraverser(platform, uuid, store)
 	if err != nil {
-		traverser, err = store.CreateTraverser(uuid)
+		return fmt.Errorf("traverser with id (%s) not found, %w", uuid, err)
+	}
+
+	// check that the current state is exitable
+	// past this block we can assume current state is exitable
+	if !newTraverser {
+		curState, err := traverser.CurrentState()
 		if err != nil {
-			return fmt.Errorf("failed to create traverser for id (%s), %w", uuid, err)
+			return fmt.Errorf("failed to get current state from traverser, %w", err)
 		}
-		err = traverser.SetCurrentState(StartState)
-		if err != nil {
-			return fmt.Errorf("failed to set current state to start state %w", err)
+		canExit, ok := checkStateExitable(curState, stateMap)
+		if !ok {
+			return fmt.Errorf("state (%s) does not exist", curState)
 		}
-		err = traverser.SetPlatform(platform)
-		if err != nil {
-			return fmt.Errorf("failed to set platform %w", err)
+
+		// if they cant exit their current state then queue it
+		if !canExit {
+			err = traverser.AddQueuedState(targetState, input)
+			if err != nil {
+				return fmt.Errorf("failed to enqueue state, %w", err)
+			}
 		}
 	}
 
-	err = traverser.EnqueueQueuedState(state, input)
+	lastUpdate, err := traverser.GetLastUpdateTime()
 	if err != nil {
-		return fmt.Errorf("failed to enqueue state to user, %w", err)
+		return fmt.Errorf("failed to get last update time, %w", err)
+	}
+
+	// check if lastUpdate was even set
+	if !lastUpdate.IsZero() {
+		// check if its past the timeout
+		if !time.Now().UTC().After(lastUpdate.Add(InputTimeout)) {
+			// we have to queue it because another state is already in progress
+			err = traverser.AddQueuedState(targetState, input)
+			if err != nil {
+				return fmt.Errorf("failed to enqueue state, %w", err)
+			}
+		}
+	}
+
+	// we can actually handle the state now
+	stateObj, ok := stateMap[targetState]
+	if !ok {
+		return fmt.Errorf("state (%s) does not exist", targetState)
+	}
+
+	// set info key
+	err = traverser.Upsert(QueueInfoKey, input)
+	if err != nil {
+		return fmt.Errorf("failed to upsert queue info, %w", err)
+	}
+
+	// now that we know that's a valid state we can set it in the traverser
+	currentState := stateObj(emitter, traverser)
+	err = performEntryAction(currentState, emitter, traverser, stateMap)
+	if err != nil {
+		return fmt.Errorf("failed to perform entry action triggered state, %w", err)
 	}
 
 	return nil
+}
+
+func checkStateExitable(state string, stateMap StateMap) (isExitable bool, ok bool) {
+	stateObj, ok := stateMap[state]
+	if !ok {
+		return false, false
+	}
+
+	return stateObj(nil, nil).IsExitable, true
 }
 
 // Step performs a single step through a StateMachine.
@@ -46,45 +103,9 @@ func EnqueueStateToUser(platform, uuid, state string, input interface{}, store S
 // the StateMachine, so all platforms function with the same logic.
 func Step(platform, uuid string, input interface{}, InputTransformer InputTransformer, store Store, emitter Emitter, stateMap StateMap) error {
 	// Get Traverser
-	newTraverser := false
-	traverser, err := store.FetchTraverser(uuid)
+	traverser, newTraverser, err := getTraverser(platform, uuid, store)
 	if err != nil {
-		traverser, err = store.CreateTraverser(uuid)
-		if err != nil {
-			return fmt.Errorf("failed to create traverser for id (%s), %w", uuid, err)
-		}
-		err = traverser.SetCurrentState(StartState)
-		if err != nil {
-			return fmt.Errorf("failed to set current state to start state %w", err)
-		}
-		err = traverser.SetPlatform(platform)
-		if err != nil {
-			return fmt.Errorf("failed to set platform %w", err)
-		}
-		newTraverser = true
-	}
-
-	// check if traverser has any queued states
-	// if there are it will override whatever state was attempted and eventually should lead back to let the user decide
-	// this is for matters that the bot initiates generally coming from "triggers"
-	if !newTraverser {
-		state, info, ok, err := traverser.DequeueQueuedState()
-		if err != nil {
-			return fmt.Errorf("failed to check queued states, %w", err)
-		}
-
-		// if anything was actually dequeued
-		if ok {
-			err = traverser.SetCurrentState(state)
-			if err != nil {
-				return fmt.Errorf("failed to set current state from queued state provided (state=%s), %w", state, err)
-			}
-
-			err = traverser.Upsert(QueueInfoKey, info)
-			if err != nil {
-				return fmt.Errorf("failed to upsert queue info, %w", err)
-			}
-		}
+		return fmt.Errorf("traverser with id (%s) not found, %w", uuid, err)
 	}
 
 	// Get current state
@@ -92,7 +113,13 @@ func Step(platform, uuid string, input interface{}, InputTransformer InputTransf
 	if err != nil {
 		return fmt.Errorf("failed to get current state from traverser %w", err)
 	}
-	currentState := stateMap[traverserCurState](emitter, traverser)
+
+	stateObj, ok := stateMap[traverserCurState]
+	if !ok {
+		return fmt.Errorf("state (%s) does not exist", traverserCurState)
+	}
+
+	currentState := stateObj(emitter, traverser)
 	if newTraverser {
 		err = performEntryAction(currentState, emitter, traverser, stateMap)
 		if err != nil {
@@ -108,6 +135,10 @@ func Step(platform, uuid string, input interface{}, InputTransformer InputTransf
 			err = traverser.SetCurrentState(newState.Slug)
 			if err != nil {
 				return fmt.Errorf("failed to set current state during transition, %w", err)
+			}
+			err = traverser.SetLastUpdateTime(time.Now().UTC())
+			if err != nil {
+				return fmt.Errorf("failed to set last update time, %w", err)
 			}
 			err = performEntryAction(newState, emitter, traverser, stateMap)
 			if err != nil {
@@ -129,6 +160,35 @@ func Step(platform, uuid string, input interface{}, InputTransformer InputTransf
 	return nil
 }
 
+func getTraverser(platform, uuid string, store Store) (Traverser, bool, error) {
+	newTraverser := false
+	traverser, err := store.FetchTraverser(uuid)
+	if err != nil {
+		traverser, err = store.CreateTraverser(uuid)
+		if err != nil {
+			return nil, false, fmt.Errorf("failed to create traverser for id (%s), %w", uuid, err)
+		}
+
+		err = traverser.SetCurrentState(StartState)
+		if err != nil {
+			return nil, false, fmt.Errorf("failed to set current state to start state %w", err)
+		}
+
+		err = traverser.SetLastUpdateTime(time.Now().UTC())
+		if err != nil {
+			return nil, false,  fmt.Errorf("failed to set last update time, %w", err)
+		}
+
+		err = traverser.SetPlatform(platform)
+		if err != nil {
+			return nil, false, fmt.Errorf("failed to set platform %w", err)
+		}
+		newTraverser = true
+	}
+
+	return traverser, newTraverser, nil
+}
+
 // performEntryAction handles the logic of switching states and calling the Entry function.
 //
 // It is handled via this function, as a state can manually switch states in the Entry function.
@@ -148,7 +208,11 @@ func performEntryAction(state *State, emitter Emitter, traverser Traverser, stat
 	}
 
 	if currentState != state.Slug {
-		shiftedState := stateMap[currentState](emitter, traverser)
+		shift, ok := stateMap[currentState]
+		if !ok {
+			return fmt.Errorf("state (%s) does not exist", currentState)
+		}
+		shiftedState := shift(emitter, traverser)
 		err = performEntryAction(shiftedState, emitter, traverser, stateMap)
 		if err != nil {
 			return fmt.Errorf("failed to perform recursive entry action, %w", err)

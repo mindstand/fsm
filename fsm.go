@@ -1,5 +1,7 @@
 package fsm
 
+import "time"
+
 // StartState is a constant for defining the slug of
 // the start state for all StateMachines.
 const StartState = "start"
@@ -19,6 +21,7 @@ type BuildState func(Emitter, Traverser) *State
 // State represents an individual state in a larger state machine
 type State struct {
 	Slug         string
+	IsExitable bool
 	Entry        func(isReentry bool) error
 	ValidIntents func() []*Intent
 	Transition   func(*Intent, map[string]string) *State
@@ -50,14 +53,15 @@ type Traverser interface {
 	SetPlatform(string) error
 
 	// State
+	GetLastUpdateTime() (time.Time, error)
+	SetLastUpdateTime(t time.Time) error
 	CurrentState() (string, error)
 	SetCurrentState(string) error
 
 	// Queue
-	// dequeue should internally perform queue behavior, if it doesnt it will infinitely try to execute this state
-	DequeueQueuedState() (state string, stateInfo interface{}, exists bool, err error)
-	// enqueue should internally perform queue behavior
-	EnqueueQueuedState(state string, stateInfo interface{}) error
+	// Note invoking queued states must be done manually
+	AddQueuedState(state string, info interface{}) error
+	DequeueQueuedState() error
 
 	// Data
 	Upsert(key string, value interface{}) error
