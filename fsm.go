@@ -65,6 +65,6 @@ type Traverser interface {
 
 	// Data
 	Upsert(key string, value interface{}) error
-	Fetch(key string) (interface{}, error)
+	Fetch(key string, respObj interface{}) error
 	Delete(key string) error
 }
